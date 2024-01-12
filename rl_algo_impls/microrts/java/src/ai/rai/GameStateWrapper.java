@@ -2,6 +2,7 @@ package ai.rai;
 
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Comparator;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -17,10 +18,22 @@ import rts.units.UnitType;
 import rts.units.UnitTypeTable;
 import util.Pair;
 
+import ai.abstraction.pathfinding.AStarPathFinding;
+import ai.rai.util.Pos;
+
+import static rts.PhysicalGameState.TERRAIN_WALL;
+
 public class GameStateWrapper {
     GameState gs;
+    PhysicalGameState _pgs;
     int debugLevel;
     ResourceUsage base_ru;
+    AStarPathFinding astarPath;
+    
+    List<Unit> _resources = new ArrayList<>();
+    List<Unit> _enemies = new ArrayList<>();
+
+    static Player _p;
 
     int[][][][] vectorObservation;
     public static final int numVectorObservationFeatureMaps = 13;
@@ -36,12 +49,18 @@ public class GameStateWrapper {
         debugLevel = a_debugLevel;
 
         base_ru = new ResourceUsage();
-        var pgs = gs.getPhysicalGameState();
-        for (Unit u : pgs.getUnits()) {
+        _pgs = gs.getPhysicalGameState();
+        for (Unit u : _pgs.getUnits()) {
             UnitActionAssignment uaa = gs.getActionAssignment(u);
             if (uaa != null) {
-                ResourceUsage ru = uaa.action.resourceUsage(u, pgs);
+                ResourceUsage ru = uaa.action.resourceUsage(u, _pgs);
                 base_ru.merge(ru);
+            }
+
+            if (u.getType().isResource)
+                _resources.add(u);
+            if (isEnemyUnit(u)) {
+                _enemies.add(u);
             }
         }
     }
@@ -365,10 +384,14 @@ public class GameStateWrapper {
 
     public void getValidActionArray(Unit u, UnitTypeTable utt, int[] mask, int maxAttackRange,
             int idxOffset) {
+        _p = gs.getPlayer(u.getPlayer());
+
         final List<UnitAction> uas = getUnitActions(u);
         int centerCoordinate = maxAttackRange / 2;
         int numUnitTypes = utt.getUnitTypes().size();
+
         for (UnitAction ua : uas) {
+
             mask[idxOffset + ua.getType()] = 1;
             switch (ua.getType()) {
                 case UnitAction.TYPE_NONE: {
@@ -410,6 +433,7 @@ public class GameStateWrapper {
     }
 
     public List<UnitAction> getUnitActions(Unit unit) {
+
         List<UnitAction> l = new ArrayList<>();
 
         PhysicalGameState pgs = gs.getPhysicalGameState();
@@ -580,6 +604,18 @@ public class GameStateWrapper {
                 if (ua.resourceUsage(unit, pgs).consistentWith(base_ru, gs))
                     l.add(ua);
             }
+            
+            if (unit != null) {
+                Unit closestR = Closest(toPos(unit), _resources);
+
+                if (closestR != null) {
+                    UnitAction moveT = moveTowards(unit, toPos(closestR));
+
+                    if (moveT != null && moveT.resourceUsage(unit, pgs).consistentWith(base_ru, gs)) {
+                        l.add(moveT);
+                    }
+                }
+            }
         }
 
         // units can always stay idle:
@@ -616,8 +652,10 @@ public class GameStateWrapper {
         ArrayList<int[]> vectorActions = new ArrayList<>();
 
         for (Pair<Unit, UnitAction> uua : pa.getActions()) {
+
             Unit u = uua.m_a;
             UnitAction ua = uua.m_b;
+
             if (!gs.getActionAssignment(u).action.equals(ua)) {
                 System.out.println(u + " hasn't been issued " + ua + ". Skipping.");
                 continue;
@@ -657,5 +695,228 @@ public class GameStateWrapper {
             vectorActions.add(va);
         }
         return vectorActions.toArray(new int[0][]);
+    }
+
+    int distance(Pos a, Pos b) {
+        if (a == null | b == null)
+            return Integer.MAX_VALUE;
+        int dx = a.getX() - b.getX();
+        int dy = a.getY() - b.getY();
+        return Math.abs(dx) + Math.abs(dy);
+    }
+
+    int distance(Unit a, Unit b) {
+        return distance(toPos(a), toPos(b));
+    }
+
+    int distance(Unit a, Pos b) {
+        return distance(toPos(a), b);
+    }
+
+    double squareDist(Pos p, Pos u) {
+        int dx = p.getX() - u.getX();
+        int dy = p.getY() - u.getY();
+        return Math.sqrt(dx * dx + dy * dy);
+    }
+
+    List<Pos> allPosDist(Pos src, int dist) {
+        List<Pos> poss = new ArrayList<>();
+        int sx = src.getX();
+        int sy = src.getY();
+
+        for (int x = -dist; x <= dist; x++) {
+            int y = dist - Math.abs(x);
+            poss.add(new Pos(sx + x, sy + y));
+            if (y != 0)
+                poss.add(new Pos(sx + x, sy - y));
+        }
+        return poss;
+    }
+
+    List<Pos> allPosRange(Pos src, int range) {
+        List<Pos> poss = new ArrayList<>();
+        for (int r = 0; r <= range; r++)
+            poss.addAll(allPosDist(src, r));
+        return poss;
+    }
+
+    Pos toPos(Unit u) {
+        return new Pos(u.getX(), u.getY());
+    }
+
+    int toDir(Pos src, Pos dst) {
+        int dx = dst.getX() - src.getX();
+        int dy = dst.getY() - src.getY();
+        int dirX = dx > 0 ? UnitAction.DIRECTION_RIGHT : UnitAction.DIRECTION_LEFT;
+        int dirY = dy > 0 ? UnitAction.DIRECTION_DOWN : UnitAction.DIRECTION_UP;
+        if (Math.abs(dx) > Math.abs(dy))
+            return dirX;
+        return dirY;
+    }
+
+    boolean isEnemyUnit(Unit u) {
+        return u.getPlayer() >= 0 && u.getPlayer() != _p.getID(); // can be neither ally ot foe
+    }
+
+    boolean outOfBound(Pos p) {
+        if (p.getX() < 0 || p.getY() < 0 || p.getX() >= _pgs.getWidth()
+                || p.getY() >= _pgs.getHeight())
+            return true;
+        return false;
+    }
+
+    boolean posFree(int x, int y, int dir) {
+        Pos pos = futurePos(x, y, dir);
+        int rasterPos = pos.getX() + pos.getY() * _pgs.getWidth();
+        // if(_locationsTaken.contains(rasterPos))
+        // return false;
+        if (_pgs.getUnitAt(pos.getX(), pos.getY()) != null)
+            return false;
+        if (_pgs.getTerrain(pos.getX(), pos.getY()) == TERRAIN_WALL)
+            return false;
+        return true;
+    }
+
+    Unit Closest(Pos src, List<Unit> units) {
+        if (units.isEmpty())
+            return null;
+        Unit closest = units.stream().min(Comparator.comparing(u -> distance(src, toPos(u)))).get();
+        return closest;
+    }
+
+    boolean isBlocked(Unit u, Pos p) {
+        if (outOfBound(p) || _pgs.getTerrain(p.getX(), p.getY()) != PhysicalGameState.TERRAIN_NONE)
+            return true;
+        if (!posFree(p.getX(), p.getY(), 100))
+            return true;
+        Unit pu = _pgs.getUnitAt(p.getX(), p.getY());
+        if (pu == null)
+            return false;
+        if (pu.getType().isResource)
+            return true;
+        if (!isEnemyUnit(pu))
+            return true;
+        // if (u.getType() == _utt.getUnitType("Worker")
+        // && pu.getType() != _utt.getUnitType("Worker"))
+        // return true;
+        return false;
+    }
+
+    UnitAction findPath(Unit u, Pos dst, int maxDist) {
+        int proximity[][] = new int[_pgs.getWidth()][_pgs.getHeight()];
+        for (int[] row : proximity)
+            Arrays.fill(row, Integer.MAX_VALUE);
+        proximity[dst.getX()][dst.getY()] = 0;
+        int dist = 1;
+        List<Pos> markNext = allPosDist(dst, 1);
+        while (!markNext.isEmpty() && dist <= maxDist) {
+            List<Pos> queue = new ArrayList<>();
+            for (Pos p : markNext) {
+                if (isBlocked(u, p) || proximity[p.getX()][p.getY()] != Integer.MAX_VALUE)
+                    continue;
+                proximity[p.getX()][p.getY()] = dist;
+                List<Pos> nn = allPosDist(p, 1);
+                for (Pos n : nn) {
+                    if (isBlocked(u, n) || proximity[n.getX()][n.getY()] != Integer.MAX_VALUE || queue.contains(n))
+                        continue;
+                    queue.add(n);
+                }
+            }
+            if (proximity[u.getX()][u.getY()] != Integer.MAX_VALUE)
+                break;
+            dist += 1;
+            markNext.clear();
+            markNext.addAll(queue);
+        }
+        // now lets see if there is a path
+        List<Pos> moves = allPosDist(toPos(u), 1);
+        Integer bestFit = Integer.MIN_VALUE;
+        Pos bestPos = null;
+        for (Pos p : moves) {
+            if (outOfBound(p) || _pgs.getTerrain(p.getX(), p.getY()) == TERRAIN_WALL)
+                continue;
+            if (proximity[p.getX()][p.getY()] == Integer.MAX_VALUE)
+                continue;
+            Unit pu = _pgs.getUnitAt(p.getX(), p.getY());
+            if (pu != null)
+                continue;
+            int fit = -1000 * proximity[p.getX()][p.getY()] - (int) squareDist(p, dst);
+            if (fit > bestFit) {
+                bestFit = fit;
+                bestPos = p;
+            }
+        }
+        if (bestPos == null)
+            return null;
+        int dir = toDir(toPos(u), bestPos);
+        return new UnitAction(UnitAction.TYPE_MOVE, dir);
+    }
+
+    UnitAction findPathAdjacent(Unit src, Integer dst) {
+        int x = dst % _pgs.getWidth();
+        int y = dst / _pgs.getWidth();
+        Pos dstP = new Pos(x, y);
+
+        UnitAction astarMove = astarPath.findPathToAdjacentPosition(src, dst, gs, base_ru);
+        if (astarMove == null)
+            return astarMove;
+
+        int radius = _pgs.getUnits().size() > 32 ? 42 : 64;
+        UnitAction ua = findPath(src, dstP, radius);
+        if (ua != null)
+            return ua;
+        return astarMove;
+    }
+
+    Pos futurePos(int x, int y, int dir) {
+        int nx = x;
+        int ny = y;
+        switch (dir) {
+            case UnitAction.DIRECTION_DOWN:
+                ny = (ny == _pgs.getHeight() - 1) ? ny : ny + 1;
+                break;
+            case UnitAction.DIRECTION_UP:
+                ny = (ny == 0) ? ny : ny - 1;
+                break;
+            case UnitAction.DIRECTION_RIGHT:
+                nx = (nx == _pgs.getWidth() - 1) ? nx : nx + 1;
+                break;
+            case UnitAction.DIRECTION_LEFT:
+                nx = (nx == 0) ? nx : nx - 1;
+                break;
+            default:
+                break;
+        }
+        return new Pos(nx, ny);
+    }
+
+    // int moveTowards(Unit a, Pos e) {
+    // int pos = e.getX() + e.getY() * pgs.getWidth();
+    // UnitAction move = findPathAdjacent(a, pos);
+    // if (move == null)
+    // return -1;
+    // if (!gs.isUnitActionAllowed(a, move))
+    // return -1;
+    // Pos futPos = futurePos(a.getX(), a.getY(), move.getDirection());
+    // int fPos = futPos.getX() + futPos.getY() *
+    // pgs.getWidth();
+    // System.out.println(move + " moveTowards");
+
+    // // if (_locationsTaken.contains(fPos))
+    // // return false;
+    // // _pa.addUnitAction(a, move);
+    // // _locationsTaken.add(fPos);
+    // return fPos;
+    // }
+
+    public UnitAction moveTowards(Unit a, Pos e) {
+        int pos = e.getX() + e.getY() * _pgs.getWidth();
+        UnitAction move = findPathAdjacent(a, pos);
+        if (move == null)
+            return null;
+        if (!gs.isUnitActionAllowed(a, move))
+            return null;
+
+        return move;
     }
 }
