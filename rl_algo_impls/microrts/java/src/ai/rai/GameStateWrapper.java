@@ -2,6 +2,7 @@ package ai.rai;
 
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
 import java.util.stream.Collectors;
@@ -29,9 +30,11 @@ public class GameStateWrapper {
     int debugLevel;
     ResourceUsage base_ru;
     AStarPathFinding astarPath;
-    
+
     List<Unit> _resources = new ArrayList<>();
     List<Unit> _enemies = new ArrayList<>();
+    List<Integer> _dirs;
+    int NoDirection = 100; //this is a hack
 
     static Player _p;
 
@@ -63,6 +66,12 @@ public class GameStateWrapper {
                 _enemies.add(u);
             }
         }
+
+        _dirs = new ArrayList<>();
+        _dirs.add(UnitAction.DIRECTION_UP);
+        _dirs.add(UnitAction.DIRECTION_DOWN);
+        _dirs.add(UnitAction.DIRECTION_LEFT);
+        _dirs.add(UnitAction.DIRECTION_RIGHT);
     }
 
     /**
@@ -604,7 +613,7 @@ public class GameStateWrapper {
                 if (ua.resourceUsage(unit, pgs).consistentWith(base_ru, gs))
                     l.add(ua);
             }
-            
+
             if (unit != null) {
                 Unit closestR = Closest(toPos(unit), _resources);
 
@@ -918,5 +927,23 @@ public class GameStateWrapper {
             return null;
 
         return move;
+    }
+
+    UnitAction tryMoveAway(Unit a, Unit b) {
+        int startDist = distance(toPos(a), toPos(b));
+        List<Integer> dirsRand = new ArrayList<>(_dirs);
+        Collections.shuffle(dirsRand);
+
+        for (int dir : dirsRand) {
+            Pos newPos = futurePos(a.getX(), a.getY(), dir);
+            if (distance(newPos, toPos(b)) <= startDist)
+                continue;
+            if (!posFree(newPos.getX(), newPos.getY(), NoDirection)) // a hack
+                continue;
+            UnitAction ua = new UnitAction(UnitAction.TYPE_MOVE, dir);
+            if (gs.isUnitActionAllowed(a, ua))
+                return ua;
+        }
+        return null;
     }
 }
