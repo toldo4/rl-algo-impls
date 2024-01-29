@@ -38,6 +38,10 @@ public class GameStateWrapper {
     List<Unit> _allyCombat = new ArrayList<>();
     HashMap<Unit, Integer> _newDmgs = new HashMap<>();
 
+    int _resourcesUsed = 0;
+    List<Pos> _futureBarracks = new ArrayList<>();
+    int _futureHeavies = 0;
+
     List<Integer> _dirs;
     int NoDirection = 100; // this is a hack
 
@@ -926,10 +930,10 @@ public class GameStateWrapper {
             ePower += u.getMaxDamage();
         return (power - (int) 1.2 * ePower) > 0;
     }
-    
+
     boolean busy(Unit u) {
         // if(_pa.getAction(u) != null)
-        //     return true;
+        // return true;
         UnitActionAssignment aa = gs.getActionAssignment(u);
         return aa != null;
     }
@@ -1024,6 +1028,26 @@ public class GameStateWrapper {
         return ua;
     }
 
+    UnitAction produce(Unit u, int dir, UnitType bType, UnitTypeTable utt) {
+        if (busy(u))
+            return null;
+        // if(_p.getResources() - _resourcesUsed < bType.cost)
+        // return false;
+        if (!posFree(u.getX(), u.getY(), dir))
+            return null;
+        UnitAction ua = new UnitAction(UnitAction.TYPE_PRODUCE, dir, bType);
+        // if (!gs.isUnitActionAllowed(u, ua))
+        // return null;
+        // _pa.addUnitAction(u, ua);
+        // lockPos(u.getX(), u.getY(), ua.getDirection());
+        if (bType == utt.getUnitType("Barracks"))
+            _futureBarracks.add(futurePos(u.getX(), u.getY(), ua.getDirection()));
+        else if (bType == utt.getUnitType("Heavy"))
+            _futureHeavies += 1;
+        _resourcesUsed += bType.cost;
+        return ua;
+    }
+
     void goCombat(Unit u, UnitTypeTable utt) {
         if (busy(u) || !u.getType().canAttack) {
         }
@@ -1043,7 +1067,7 @@ public class GameStateWrapper {
             Unit enemy = candidates.get(counter);
             // if (moveTowards(u, futurePoss(enemy)))
             // break;
-            
+
             counter++;
         }
         if (counter < candidates.size()) // if (!candidates.isEmpty()) //did we make a move
