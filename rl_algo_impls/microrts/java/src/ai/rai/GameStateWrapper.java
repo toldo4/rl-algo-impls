@@ -4,6 +4,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -33,8 +34,12 @@ public class GameStateWrapper {
 
     List<Unit> _resources = new ArrayList<>();
     List<Unit> _enemies = new ArrayList<>();
+    List<Unit> _enemiesCombat = new ArrayList<>();
+    List<Unit> _allyCombat = new ArrayList<>();
+    HashMap<Unit, Integer> _newDmgs = new HashMap<>();
+
     List<Integer> _dirs;
-    int NoDirection = 100; //this is a hack
+    int NoDirection = 100; // this is a hack
 
     static Player _p;
 
@@ -65,6 +70,10 @@ public class GameStateWrapper {
             if (isEnemyUnit(u)) {
                 _enemies.add(u);
             }
+            if (isEnemyUnit(u) && u.getType().canAttack)
+                _enemiesCombat.add(u);
+            else if (u.getType().canAttack)
+                _allyCombat.add(u);
         }
 
         _dirs = new ArrayList<>();
@@ -395,7 +404,7 @@ public class GameStateWrapper {
             int idxOffset) {
         _p = gs.getPlayer(u.getPlayer());
 
-        final List<UnitAction> uas = getUnitActions(u);
+        final List<UnitAction> uas = getUnitActions(u, utt);
         int centerCoordinate = maxAttackRange / 2;
         int numUnitTypes = utt.getUnitTypes().size();
 
@@ -441,7 +450,7 @@ public class GameStateWrapper {
         }
     }
 
-    public List<UnitAction> getUnitActions(Unit unit) {
+    public List<UnitAction> getUnitActions(Unit unit, UnitTypeTable utt) {
 
         List<UnitAction> l = new ArrayList<>();
 
@@ -899,6 +908,61 @@ public class GameStateWrapper {
         return new Pos(nx, ny);
     }
 
+    Pos futurePoss(Unit unit) {
+        UnitActionAssignment aa = gs.getActionAssignment(unit);
+        if (aa == null)
+            return new Pos(unit.getX(), unit.getY());
+        if (aa.action.getType() == UnitAction.TYPE_MOVE)
+            return futurePos(unit.getX(), unit.getY(), aa.action.getDirection());
+        return new Pos(unit.getX(), unit.getY());
+    }
+
+    boolean overPowering() {
+        int power = 0;
+        for (Unit u : _allyCombat)
+            power += u.getMaxDamage();
+        int ePower = 0;
+        for (Unit u : _enemiesCombat)
+            ePower += u.getMaxDamage();
+        return (power - (int) 1.2 * ePower) > 0;
+    }
+    
+    boolean busy(Unit u) {
+        // if(_pa.getAction(u) != null)
+        //     return true;
+        UnitActionAssignment aa = gs.getActionAssignment(u);
+        return aa != null;
+    }
+
+    boolean dying(Unit u) {
+        return u.getHitPoints() <= _newDmgs.getOrDefault(u, 0);
+    }
+
+    int combatScore(Unit u, Unit e, UnitTypeTable utt) {
+        int score = -distance(u, e);
+
+        if (u.getType() == utt.getUnitType("Ranged")
+                && e.getType() == utt.getUnitType("Ranged") && _pgs.getWidth() > 9)
+            score += 2; // todo may be change that and add logic below
+
+        if (_pgs.getWidth() >= 16
+                && (u.getType() == utt.getUnitType("Heavy") || u.getType() == utt.getUnitType("Ranged"))
+                && (e.getType() == utt.getUnitType("Barracks"))) // todo - remove? todo base
+            score += _pgs.getWidth();
+
+        return score;
+    }
+
+    int[] getCombatScores(Unit u, List<Unit> targets, UnitTypeTable utt) {
+        int[] scores = new int[targets.size()];
+        int counter = 0;
+        for (Unit t : targets) {
+            scores[counter] = combatScore(u, t, utt);
+            counter++;
+        }
+        return scores;
+    }
+
     // int moveTowards(Unit a, Pos e) {
     // int pos = e.getX() + e.getY() * pgs.getWidth();
     // UnitAction move = findPathAdjacent(a, pos);
@@ -945,5 +1009,50 @@ public class GameStateWrapper {
                 return ua;
         }
         return null;
+    }
+
+    UnitAction attackNow(Unit a, Unit e) {
+        UnitAction ua = new UnitAction(UnitAction.TYPE_ATTACK_LOCATION, e.getX(), e.getY());
+        if (!gs.isUnitActionAllowed(a, ua))
+            return null;
+
+        // _pa.addUnitAction(a, ua);
+        if (!_newDmgs.containsKey(e))
+            _newDmgs.put(e, 0);
+        int newDmg = _newDmgs.get(e) + a.getMaxHitPoints();
+        _newDmgs.replace(e, newDmg);
+        return ua;
+    }
+
+    void goCombat(Unit u, UnitTypeTable utt) {
+        if (busy(u) || !u.getType().canAttack) {
+        }
+        // continue;
+
+        List<Unit> candidates = new ArrayList(_enemies);
+        List<Unit> candidatesCopy = new ArrayList(candidates);
+        int[] scores = getCombatScores(u, candidates, utt);
+        Collections.sort(candidates, Comparator.comparing(e -> -scores[candidatesCopy.indexOf(e)])); // - for
+                                                                                                     // ascending
+                                                                                                     // order
+        int counter = 0;
+        int cutOff = _enemiesCombat.size() > 24 ? 12 : 24; // for performance
+        // long timeRemain = timeRemaining(true);
+
+        while (counter < candidates.size() && counter < cutOff) {
+            Unit enemy = candidates.get(counter);
+            // if (moveTowards(u, futurePoss(enemy)))
+            // break;
+            
+            counter++;
+        }
+        if (counter < candidates.size()) // if (!candidates.isEmpty()) //did we make a move
+            counter++;// continue;
+        if (u.getType() != utt.getUnitType("Ranged")) {
+        } // continue;
+        Unit enemy = candidates.get(0);
+        if (overPowering()) // give worker to open pathway if blocked
+            tryMoveAway(u, u);
+        // moveInDirection(u, enemy);
     }
 }
