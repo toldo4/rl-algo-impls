@@ -1128,6 +1128,10 @@ public class GameStateWrapper {
         return false; // todo here
     }
 
+    UnitAction doNothing(Unit u) {
+        return new UnitAction(UnitAction.TYPE_NONE, 1);
+   }
+
     UnitAction produceCombat(Unit barrack, UnitType unitType) {
         List<Integer> dirsLeft = new ArrayList<>(_dirs);
         while (!dirsLeft.isEmpty()) {
