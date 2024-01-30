@@ -997,6 +997,21 @@ public class GameStateWrapper {
         return move;
     }
 
+    UnitAction harvest(Unit worker, Unit resource) {
+        if (busy(worker))
+            return null;
+        if (distance(toPos(worker), toPos(resource)) != 1) {
+            System.out.println("wanted to harvest but the resource is not nearby");
+            return null;
+        }
+        int dir = toDir(toPos(worker), toPos(resource));
+        UnitAction ua = new UnitAction(UnitAction.TYPE_HARVEST, dir);
+        if (gs.isUnitActionAllowed(worker, ua))
+            return ua;
+        return null;
+    }
+
+
     UnitAction tryMoveAway(Unit a, Unit b) {
         int startDist = distance(toPos(a), toPos(b));
         List<Integer> dirsRand = new ArrayList<>(_dirs);
