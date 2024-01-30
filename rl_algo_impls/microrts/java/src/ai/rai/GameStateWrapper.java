@@ -1130,7 +1130,21 @@ public class GameStateWrapper {
 
     UnitAction doNothing(Unit u) {
         return new UnitAction(UnitAction.TYPE_NONE, 1);
-   }
+    }
+
+    UnitAction returnHarvest(Unit worker, Unit base) {
+        if (busy(worker))
+            return null;
+        if (distance(toPos(worker), toPos(base)) != 1) {
+            System.out.println("wanted to return but the base is not nearby");
+            return null;
+        }
+        int dir = toDir(toPos(worker), toPos(base));
+        UnitAction ua = new UnitAction(UnitAction.TYPE_RETURN, dir);
+        if (!gs.isUnitActionAllowed(worker, ua))
+            return null;
+        return ua;
+    }
 
     UnitAction produceCombat(Unit barrack, UnitType unitType) {
         List<Integer> dirsLeft = new ArrayList<>(_dirs);
