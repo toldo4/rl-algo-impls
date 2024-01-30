@@ -28,24 +28,44 @@ import static rts.PhysicalGameState.TERRAIN_WALL;
 public class GameStateWrapper {
     GameState gs;
     PhysicalGameState _pgs;
+    UnitTypeTable _utt = null;
+
     int debugLevel;
     ResourceUsage base_ru;
     AStarPathFinding astarPath;
 
     List<Unit> _resources = new ArrayList<>();
+
+    List<Unit> _bases = new ArrayList<>();
+    List<Unit> _barracks = new ArrayList<>();
+    List<Unit> _workers = new ArrayList<>();
+    List<Unit> _heavies = new ArrayList<>();
+    List<Unit> _archers = new ArrayList<>();
+    List<Unit> _lights = new ArrayList<>();
+    List<Unit> _allyUnits = new ArrayList<>();
+    List<Unit> _allyCombat = new ArrayList<>();
+
+    List<Unit> _enemyBases = new ArrayList<>();
+    List<Unit> _enemyBarracks = new ArrayList<>();
+    List<Unit> _enemyWorkers = new ArrayList<>();
+    List<Unit> _enemyHeavies = new ArrayList<>();
+    List<Unit> _enemyArchers = new ArrayList<>();
+    List<Unit> _enemyLights = new ArrayList<>();
     List<Unit> _enemies = new ArrayList<>();
     List<Unit> _enemiesCombat = new ArrayList<>();
-    List<Unit> _allyCombat = new ArrayList<>();
+
     HashMap<Unit, Integer> _newDmgs = new HashMap<>();
 
     int _resourcesUsed = 0;
     List<Pos> _futureBarracks = new ArrayList<>();
     int _futureHeavies = 0;
+    int _enemyFutureHeavy = 0;
 
     List<Integer> _dirs;
     int NoDirection = 100; // this is a hack
 
     static Player _p;
+    static Player _enemyP;
 
     int[][][][] vectorObservation;
     public static final int numVectorObservationFeatureMaps = 13;
@@ -62,6 +82,9 @@ public class GameStateWrapper {
 
         base_ru = new ResourceUsage();
         _pgs = gs.getPhysicalGameState();
+        _utt = gs.getUnitTypeTable();
+        _enemyP = gs.getPlayer(_p.getID() == 0 ? 1 : 0);
+
         for (Unit u : _pgs.getUnits()) {
             UnitActionAssignment uaa = gs.getActionAssignment(u);
             if (uaa != null) {
@@ -71,6 +94,31 @@ public class GameStateWrapper {
 
             if (u.getType().isResource)
                 _resources.add(u);
+            else if (u.getType() == _utt.getUnitType("Base") && isEnemyUnit(u))
+                _enemyBases.add(u);
+            else if (u.getType() == _utt.getUnitType("Base"))
+                _bases.add(u);
+            else if (u.getType() == _utt.getUnitType("Barracks") && isEnemyUnit(u))
+                _enemyBarracks.add(u);
+            else if (u.getType() == _utt.getUnitType("Barracks"))
+                _barracks.add(u);
+            else if (u.getType() == _utt.getUnitType("Worker") && isEnemyUnit(u))
+                _enemyWorkers.add(u);
+            else if (u.getType() == _utt.getUnitType("Worker"))
+                _workers.add(u);
+            else if (u.getType() == _utt.getUnitType("Ranged") && isEnemyUnit(u))
+                _enemyArchers.add(u);
+            else if (u.getType() == _utt.getUnitType("Ranged"))
+                _archers.add(u);
+            else if (u.getType() == _utt.getUnitType("Heavy") && isEnemyUnit(u))
+                _enemyHeavies.add(u);
+            else if (u.getType() == _utt.getUnitType("Heavy"))
+                _heavies.add(u);
+            else if (u.getType() == _utt.getUnitType("Light") && isEnemyUnit(u))
+                _enemyLights.add(u);
+            else if (u.getType() == _utt.getUnitType("Light"))
+                _lights.add(u);
+
             if (isEnemyUnit(u)) {
                 _enemies.add(u);
             }
@@ -761,9 +809,24 @@ public class GameStateWrapper {
             poss.addAll(allPosDist(src, r));
         return poss;
     }
+    int minDistance(Pos p, List<Pos> poses) {
+        int minDist = Integer.MAX_VALUE;
+        for (Pos u : poses) {
+            minDist = minDist < distance(p, u) ? minDist : distance(p, u);
+        }
+        return minDist;
+    }
 
     Pos toPos(Unit u) {
         return new Pos(u.getX(), u.getY());
+    }
+
+    List<Pos> toPos(List<Unit> units) {
+        List<Pos> poses = new ArrayList<>();
+        for (Unit u : units) {
+            poses.add(toPos(u));
+        }
+        return poses;
     }
 
     int toDir(Pos src, Pos dst) {
@@ -942,26 +1005,26 @@ public class GameStateWrapper {
         return u.getHitPoints() <= _newDmgs.getOrDefault(u, 0);
     }
 
-    int combatScore(Unit u, Unit e, UnitTypeTable utt) {
+    int combatScore(Unit u, Unit e) {
         int score = -distance(u, e);
 
-        if (u.getType() == utt.getUnitType("Ranged")
-                && e.getType() == utt.getUnitType("Ranged") && _pgs.getWidth() > 9)
+        if (u.getType() == _utt.getUnitType("Ranged")
+                && e.getType() == _utt.getUnitType("Ranged") && _pgs.getWidth() > 9)
             score += 2; // todo may be change that and add logic below
 
         if (_pgs.getWidth() >= 16
-                && (u.getType() == utt.getUnitType("Heavy") || u.getType() == utt.getUnitType("Ranged"))
-                && (e.getType() == utt.getUnitType("Barracks"))) // todo - remove? todo base
+                && (u.getType() == _utt.getUnitType("Heavy") || u.getType() == _utt.getUnitType("Ranged"))
+                && (e.getType() == _utt.getUnitType("Barracks"))) // todo - remove? todo base
             score += _pgs.getWidth();
 
         return score;
     }
 
-    int[] getCombatScores(Unit u, List<Unit> targets, UnitTypeTable utt) {
+    int[] getCombatScores(Unit u, List<Unit> targets) {
         int[] scores = new int[targets.size()];
         int counter = 0;
         for (Unit t : targets) {
-            scores[counter] = combatScore(u, t, utt);
+            scores[counter] = combatScore(u, t);
             counter++;
         }
         return scores;
@@ -997,6 +1060,41 @@ public class GameStateWrapper {
         return move;
     }
 
+    boolean enemyHeaviesWeak() {
+        if (_enemyFutureHeavy > 0)
+            return false;
+        if (_enemyHeavies.size() > 1)
+            return false;
+
+        if (_enemyHeavies.size() == 1) {
+            if (_enemyHeavies.get(0).getHitPoints() > 3) // rangers get 3 shoots at heavy
+                return false;
+        }
+
+        int totEnemyRes = _enemyP.getResources();
+        for (Unit u : _enemyWorkers) {
+            Pos uPos = new Pos(u.getX(), u.getY());
+            int baseDist = minDistance(uPos, toPos(_enemyBases));
+            int resDist = u.getResources() > 0 ? 0 : minDistance(uPos, toPos(_resources));
+
+            // todo - here what matters is how close are we to attack relative to future
+            // heavies
+            totEnemyRes += (baseDist + resDist) < _pgs.getWidth() / 2 ? 1 : 0;
+        }
+        if (totEnemyRes >= _utt.getUnitType("Heavy").cost)
+            return false;
+        return true;
+    }
+
+    boolean shouldWorkersAttack() {
+        if (_pgs.getWidth() <= 12)
+            return true;
+        if (enemyHeaviesWeak() && _enemyArchers.isEmpty() &&
+                _heavies.isEmpty() && _futureHeavies == 0 && _archers.isEmpty())
+            return true;
+        return false; // todo here
+    }
+
     UnitAction harvest(Unit worker, Unit resource) {
         if (busy(worker))
             return null;
@@ -1010,7 +1108,6 @@ public class GameStateWrapper {
             return ua;
         return null;
     }
-
 
     UnitAction tryMoveAway(Unit a, Unit b) {
         int startDist = distance(toPos(a), toPos(b));
@@ -1063,14 +1160,14 @@ public class GameStateWrapper {
         return ua;
     }
 
-    void goCombat(Unit u, UnitTypeTable utt) {
+    void goCombat(Unit u) {
         if (busy(u) || !u.getType().canAttack) {
         }
         // continue;
 
         List<Unit> candidates = new ArrayList(_enemies);
         List<Unit> candidatesCopy = new ArrayList(candidates);
-        int[] scores = getCombatScores(u, candidates, utt);
+        int[] scores = getCombatScores(u, candidates);
         Collections.sort(candidates, Comparator.comparing(e -> -scores[candidatesCopy.indexOf(e)])); // - for
                                                                                                      // ascending
                                                                                                      // order
@@ -1087,7 +1184,7 @@ public class GameStateWrapper {
         }
         if (counter < candidates.size()) // if (!candidates.isEmpty()) //did we make a move
             counter++;// continue;
-        if (u.getType() != utt.getUnitType("Ranged")) {
+        if (u.getType() != _utt.getUnitType("Ranged")) {
         } // continue;
         Unit enemy = candidates.get(0);
         if (overPowering()) // give worker to open pathway if blocked
