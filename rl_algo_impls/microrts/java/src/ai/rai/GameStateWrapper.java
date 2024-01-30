@@ -809,6 +809,7 @@ public class GameStateWrapper {
             poss.addAll(allPosDist(src, r));
         return poss;
     }
+
     int minDistance(Pos p, List<Pos> poses) {
         int minDist = Integer.MAX_VALUE;
         for (Pos u : poses) {
@@ -1060,6 +1061,38 @@ public class GameStateWrapper {
         return move;
     }
 
+    ResourceUsage fullResourceUse() {
+        ResourceUsage ru = gs.getResourceUsage().clone();
+        // ru.merge(_pa.getResourceUsage());
+
+        // todo - on small board taking future pos as used may
+        // be to harsh and costly
+        // for (Integer pos : _locationsTaken) {
+        // int x = pos % _pgs.getWidth();
+        // int y = pos / _pgs.getWidth();
+        // Unit u = new Unit(0, _utt.getUnitType("Worker"), x, y);
+        // UnitAction a = null;
+        // if (x > 0)
+        // a = new UnitAction(UnitAction.TYPE_MOVE, NoDirection); //this is a hack
+        // else
+        // a = new UnitAction(UnitAction.TYPE_MOVE, NoDirection);
+        // UnitActionAssignment uaa = new UnitActionAssignment(u, a, 0);
+        // ru.merge(uaa.action.resourceUsage(u, _pgs));
+        // }
+        return ru;
+    }
+
+    boolean isSeperated(Unit base, List<Unit> units) {
+        for (Unit u : units) {
+            int rasterPos = u.getX() + u.getY() * _pgs.getWidth();
+            ResourceUsage rsu = fullResourceUse();// (_pgs.getHeight() == 8) ? _gs.getResourceUsage() : //todo - remove
+                                                  // this
+            if (astarPath.findPathToAdjacentPosition(base, rasterPos, gs, rsu) != null)
+                return false;
+        }
+        return true;
+    }
+
     boolean enemyHeaviesWeak() {
         if (_enemyFutureHeavy > 0)
             return false;
@@ -1093,6 +1126,54 @@ public class GameStateWrapper {
                 _heavies.isEmpty() && _futureHeavies == 0 && _archers.isEmpty())
             return true;
         return false; // todo here
+    }
+
+    UnitAction produceCombat(Unit barrack, UnitType unitType) {
+        List<Integer> dirsLeft = new ArrayList<>(_dirs);
+        while (!dirsLeft.isEmpty()) {
+            int bestScore = -Integer.MAX_VALUE;
+            int bestDir = -Integer.MAX_VALUE;
+            for (Integer dir : dirsLeft) {
+                Pos p = futurePos(barrack.getX(), barrack.getY(), dir);
+                int score = -minDistance(p, toPos(_enemies));
+                if (score > bestScore) {
+                    bestScore = score;
+                    bestDir = dir;
+                }
+            }
+            UnitAction ua = produce(barrack, bestDir, unitType);
+            if (ua != null)
+                return ua;
+            dirsLeft.remove(Integer.valueOf(bestDir));
+        }
+        return null;
+    }
+
+    UnitAction barracksAction(Unit barrack) {
+        UnitAction ua = null;
+        if (busy(barrack))
+            return ua;
+
+        if (isSeperated(barrack, _enemies)) {
+            ua = produceCombat(barrack, _utt.getUnitType("Ranged"));
+            if (ua == null)
+                return ua;
+        }
+        ua = produceCombat(barrack, _utt.getUnitType("Heavy"));
+        if (ua == null)
+            return ua;
+
+        if (enemyHeaviesWeak()) // not enough resource for heavy
+        {
+            ua = produceCombat(barrack, _utt.getUnitType("Ranged"));
+            if (ua == null)
+                return ua;
+        }
+
+        if (_resources.isEmpty() && _p.getResources() - _resourcesUsed < _utt.getUnitType("Heavy").cost)
+            return produceCombat(barrack, _utt.getUnitType("Ranged"));
+
+        return ua;
     }
 
     UnitAction harvest(Unit worker, Unit resource) {
@@ -1140,7 +1221,7 @@ public class GameStateWrapper {
         return ua;
     }
 
-    UnitAction produce(Unit u, int dir, UnitType bType, UnitTypeTable utt) {
+    UnitAction produce(Unit u, int dir, UnitType bType) {
         if (busy(u))
             return null;
         // if(_p.getResources() - _resourcesUsed < bType.cost)
@@ -1152,9 +1233,9 @@ public class GameStateWrapper {
         // return null;
         // _pa.addUnitAction(u, ua);
         // lockPos(u.getX(), u.getY(), ua.getDirection());
-        if (bType == utt.getUnitType("Barracks"))
+        if (bType == _utt.getUnitType("Barracks"))
             _futureBarracks.add(futurePos(u.getX(), u.getY(), ua.getDirection()));
-        else if (bType == utt.getUnitType("Heavy"))
+        else if (bType == _utt.getUnitType("Heavy"))
             _futureHeavies += 1;
         _resourcesUsed += bType.cost;
         return ua;
