@@ -1259,8 +1259,28 @@ public class GameStateWrapper {
         return ua;
     }
 
-    void goCombat(Unit u) {
+    UnitAction moveInDirection(Unit a, Unit b) {
+        int startDist = distance(toPos(a), toPos(b));
+        List<Integer> dirsRand = new ArrayList<>(_dirs);
+        Collections.shuffle(dirsRand);
+        for (int dir : dirsRand) {
+            Pos newPos = futurePos(a.getX(), a.getY(), dir);
+            if (distance(newPos, toPos(b)) >= startDist)
+                continue;
+            if (!posFree(newPos.getX(), newPos.getY(), NoDirection)) // a hack
+                continue;
+            UnitAction ua = new UnitAction(UnitAction.TYPE_MOVE, dir);
+            if (gs.isUnitActionAllowed(a, ua)) {
+                // lockPos(newPos.getX(), newPos.getY(), NoDirection);
+                return ua;
+            }
+        }
+        return null;
+    }
+
+    UnitAction goCombat(Unit u) {
         if (busy(u) || !u.getType().canAttack) {
+            return null;
         }
         // continue;
 
@@ -1276,18 +1296,20 @@ public class GameStateWrapper {
 
         while (counter < candidates.size() && counter < cutOff) {
             Unit enemy = candidates.get(counter);
-            // if (moveTowards(u, futurePoss(enemy)))
-            // break;
+            UnitAction mta = moveTowards(u, futurePoss(enemy));
+            if (mta != null)
+                break;
 
             counter++;
         }
         if (counter < candidates.size()) // if (!candidates.isEmpty()) //did we make a move
-            counter++;// continue;
+            return null;
         if (u.getType() != _utt.getUnitType("Ranged")) {
+            return null;
         } // continue;
         Unit enemy = candidates.get(0);
         if (overPowering()) // give worker to open pathway if blocked
-            tryMoveAway(u, u);
-        // moveInDirection(u, enemy);
+            return tryMoveAway(u, u);
+        return moveInDirection(u, enemy);
     }
 }
