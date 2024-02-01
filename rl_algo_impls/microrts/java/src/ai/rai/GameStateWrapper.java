@@ -540,39 +540,50 @@ public class GameStateWrapper {
         UnitType type = unit.getType();
         // if this unit can attack, adds an attack action for each unit around it
         if (type.canAttack) {
-            int attackTime = type.attackTime;
-            if (type.attackRange == 1) {
-                if (y > 0 && uup != null && uup.getPlayer() != player && uup.getPlayer() >= 0
-                        && !isUnitMovingWithinTimesteps(uaaUp, attackTime)) {
-                    l.add(new UnitAction(UnitAction.TYPE_ATTACK_LOCATION, uup.getX(), uup.getY()));
-                }
-                if (x < pgs.getWidth() - 1 && uright != null && uright.getPlayer() != player
-                        && uright.getPlayer() >= 0 && !isUnitMovingWithinTimesteps(uaaRight, attackTime)) {
-                    l.add(new UnitAction(UnitAction.TYPE_ATTACK_LOCATION, uright.getX(), uright.getY()));
-                }
-                if (y < pgs.getHeight() - 1 && udown != null && udown.getPlayer() != player && udown.getPlayer() >= 0
-                        && !isUnitMovingWithinTimesteps(uaaDown, attackTime)) {
-                    l.add(new UnitAction(UnitAction.TYPE_ATTACK_LOCATION, udown.getX(), udown.getY()));
-                }
-                if (x > 0 && uleft != null && uleft.getPlayer() != player && uleft.getPlayer() >= 0
-                        && !isUnitMovingWithinTimesteps(uaaLeft, attackTime)) {
-                    l.add(new UnitAction(UnitAction.TYPE_ATTACK_LOCATION, uleft.getX(), uleft.getY()));
-                }
-            } else {
-                int sqrange = type.attackRange * type.attackRange;
-                for (Unit u : pgs.getUnits()) {
-                    if (u.getPlayer() < 0 || u.getPlayer() == player) {
-                        continue;
-                    }
-                    int sq_dx = (u.getX() - x) * (u.getX() - x);
-                    int sq_dy = (u.getY() - y) * (u.getY() - y);
-                    if (sq_dx + sq_dy <= sqrange) {
-                        UnitActionAssignment uaa = gs.getActionAssignment(u);
-                        if (!isUnitMovingWithinTimesteps(uaa, attackTime))
-                            l.add(new UnitAction(UnitAction.TYPE_ATTACK_LOCATION, u.getX(), u.getY()));
-                    }
-                }
-            }
+            // int attackTime = type.attackTime;
+            // if (type.attackRange == 1) {
+            // if (y > 0 && uup != null && uup.getPlayer() != player && uup.getPlayer() >= 0
+            // && !isUnitMovingWithinTimesteps(uaaUp, attackTime)) {
+            // l.add(new UnitAction(UnitAction.TYPE_ATTACK_LOCATION, uup.getX(),
+            // uup.getY()));
+            // }
+            // if (x < pgs.getWidth() - 1 && uright != null && uright.getPlayer() != player
+            // && uright.getPlayer() >= 0 && !isUnitMovingWithinTimesteps(uaaRight,
+            // attackTime)) {
+            // l.add(new UnitAction(UnitAction.TYPE_ATTACK_LOCATION, uright.getX(),
+            // uright.getY()));
+            // }
+            // if (y < pgs.getHeight() - 1 && udown != null && udown.getPlayer() != player
+            // && udown.getPlayer() >= 0
+            // && !isUnitMovingWithinTimesteps(uaaDown, attackTime)) {
+            // l.add(new UnitAction(UnitAction.TYPE_ATTACK_LOCATION, udown.getX(),
+            // udown.getY()));
+            // }
+            // if (x > 0 && uleft != null && uleft.getPlayer() != player &&
+            // uleft.getPlayer() >= 0
+            // && !isUnitMovingWithinTimesteps(uaaLeft, attackTime)) {
+            // l.add(new UnitAction(UnitAction.TYPE_ATTACK_LOCATION, uleft.getX(),
+            // uleft.getY()));
+            // }
+            // } else {
+            // int sqrange = type.attackRange * type.attackRange;
+            // for (Unit u : pgs.getUnits()) {
+            // if (u.getPlayer() < 0 || u.getPlayer() == player) {
+            // continue;
+            // }
+            // int sq_dx = (u.getX() - x) * (u.getX() - x);
+            // int sq_dy = (u.getY() - y) * (u.getY() - y);
+            // if (sq_dx + sq_dy <= sqrange) {
+            // UnitActionAssignment uaa = gs.getActionAssignment(u);
+            // if (!isUnitMovingWithinTimesteps(uaa, attackTime))
+            // l.add(new UnitAction(UnitAction.TYPE_ATTACK_LOCATION, u.getX(), u.getY()));
+            // }
+            // }
+            // }
+
+            UnitAction ua = goCombat(unit);
+            if (ua != null)
+                l.add(ua);
         }
 
         int resources = unit.getResources();
@@ -580,37 +591,44 @@ public class GameStateWrapper {
         // if it is already carrying resources, adds a return action for each allied
         // base around it
         if (type.canHarvest) {
-            // harvest:
-            if (resources == 0) {
-                if (y > 0 && uup != null && uup.getType().isResource) {
-                    l.add(new UnitAction(UnitAction.TYPE_HARVEST, UnitAction.DIRECTION_UP));
-                }
-                if (x < pgs.getWidth() - 1 && uright != null && uright.getType().isResource) {
-                    l.add(new UnitAction(UnitAction.TYPE_HARVEST, UnitAction.DIRECTION_RIGHT));
-                }
-                if (y < pgs.getHeight() - 1 && udown != null && udown.getType().isResource) {
-                    l.add(new UnitAction(UnitAction.TYPE_HARVEST, UnitAction.DIRECTION_DOWN));
-                }
-                if (x > 0 && uleft != null && uleft.getType().isResource) {
-                    l.add(new UnitAction(UnitAction.TYPE_HARVEST, UnitAction.DIRECTION_LEFT));
-                }
-            }
-            // return:
-            if (resources > 0) {
-                if (y > 0 && uup != null && uup.getType().isStockpile && uup.getPlayer() == player) {
-                    l.add(new UnitAction(UnitAction.TYPE_RETURN, UnitAction.DIRECTION_UP));
-                }
-                if (x < pgs.getWidth() - 1 && uright != null && uright.getType().isStockpile
-                        && uright.getPlayer() == player) {
-                    l.add(new UnitAction(UnitAction.TYPE_RETURN, UnitAction.DIRECTION_RIGHT));
-                }
-                if (y < pgs.getHeight() - 1 && udown != null && udown.getType().isStockpile
-                        && udown.getPlayer() == player) {
-                    l.add(new UnitAction(UnitAction.TYPE_RETURN, UnitAction.DIRECTION_DOWN));
-                }
-                if (x > 0 && uleft != null && uleft.getType().isStockpile && uleft.getPlayer() == player) {
-                    l.add(new UnitAction(UnitAction.TYPE_RETURN, UnitAction.DIRECTION_LEFT));
-                }
+            // // harvest:
+            // if (resources == 0) {
+            // if (y > 0 && uup != null && uup.getType().isResource) {
+            // l.add(new UnitAction(UnitAction.TYPE_HARVEST, UnitAction.DIRECTION_UP));
+            // }
+            // if (x < pgs.getWidth() - 1 && uright != null && uright.getType().isResource)
+            // {
+            // l.add(new UnitAction(UnitAction.TYPE_HARVEST, UnitAction.DIRECTION_RIGHT));
+            // }
+            // if (y < pgs.getHeight() - 1 && udown != null && udown.getType().isResource) {
+            // l.add(new UnitAction(UnitAction.TYPE_HARVEST, UnitAction.DIRECTION_DOWN));
+            // }
+            // if (x > 0 && uleft != null && uleft.getType().isResource) {
+            // l.add(new UnitAction(UnitAction.TYPE_HARVEST, UnitAction.DIRECTION_LEFT));
+            // }
+            // }
+            // // return:
+            // if (resources > 0) {
+            // if (y > 0 && uup != null && uup.getType().isStockpile && uup.getPlayer() ==
+            // player) {
+            // l.add(new UnitAction(UnitAction.TYPE_RETURN, UnitAction.DIRECTION_UP));
+            // }
+            // if (x < pgs.getWidth() - 1 && uright != null && uright.getType().isStockpile
+            // && uright.getPlayer() == player) {
+            // l.add(new UnitAction(UnitAction.TYPE_RETURN, UnitAction.DIRECTION_RIGHT));
+            // }
+            // if (y < pgs.getHeight() - 1 && udown != null && udown.getType().isStockpile
+            // && udown.getPlayer() == player) {
+            // l.add(new UnitAction(UnitAction.TYPE_RETURN, UnitAction.DIRECTION_DOWN));
+            // }
+            // if (x > 0 && uleft != null && uleft.getType().isStockpile &&
+            // uleft.getPlayer() == player) {
+            // l.add(new UnitAction(UnitAction.TYPE_RETURN, UnitAction.DIRECTION_LEFT));
+            // }
+            // }
+            UnitAction ua = goHarvesting(unit);
+            if (ua != null) {
+                l.add(ua);
             }
         }
 
@@ -618,74 +636,100 @@ public class GameStateWrapper {
         // unit produces.
         // a produce action is added for each free tile around the producer
         for (UnitType ut : type.produces) {
-            if (p.getResources() >= ut.cost + base_ru.getResourcesUsed(player)) {
-                int tup = (y > 0 ? pgs.getTerrain(x, y - 1) : PhysicalGameState.TERRAIN_WALL);
-                int tright = (x < pgs.getWidth() - 1 ? pgs.getTerrain(x + 1, y) : PhysicalGameState.TERRAIN_WALL);
-                int tdown = (y < pgs.getHeight() - 1 ? pgs.getTerrain(x, y + 1) : PhysicalGameState.TERRAIN_WALL);
-                int tleft = (x > 0 ? pgs.getTerrain(x - 1, y) : PhysicalGameState.TERRAIN_WALL);
-
-                if (tup == PhysicalGameState.TERRAIN_NONE && pgs.getUnitAt(x, y - 1) == null) {
-                    var ua = new UnitAction(UnitAction.TYPE_PRODUCE, UnitAction.DIRECTION_UP, ut);
-                    if (ua.resourceUsage(unit, pgs).consistentWith(base_ru, gs))
-                        l.add(ua);
-                }
-                if (tright == PhysicalGameState.TERRAIN_NONE && pgs.getUnitAt(x + 1, y) == null) {
-                    var ua = new UnitAction(UnitAction.TYPE_PRODUCE, UnitAction.DIRECTION_RIGHT, ut);
-                    if (ua.resourceUsage(unit, pgs).consistentWith(base_ru, gs))
-                        l.add(ua);
-                }
-                if (tdown == PhysicalGameState.TERRAIN_NONE && pgs.getUnitAt(x, y + 1) == null) {
-                    var ua = new UnitAction(UnitAction.TYPE_PRODUCE, UnitAction.DIRECTION_DOWN, ut);
-                    if (ua.resourceUsage(unit, pgs).consistentWith(base_ru, gs))
-                        l.add(ua);
-                }
-                if (tleft == PhysicalGameState.TERRAIN_NONE && pgs.getUnitAt(x - 1, y) == null) {
-                    var ua = new UnitAction(UnitAction.TYPE_PRODUCE, UnitAction.DIRECTION_LEFT, ut);
-                    if (ua.resourceUsage(unit, pgs).consistentWith(base_ru, gs))
-                        l.add(ua);
-                }
+            UnitAction ua = null;
+            if (ut == _utt.getUnitType("Worker")) {
+                workerAction(unit);
+            } else if (ut == _utt.getUnitType("Barracks")) {
+                barracksAction(unit);
+            } else if (ut == _utt.getUnitType("Barracks")) {
+                basesAction(unit);
             }
+            // if (p.getResources() >= ut.cost + base_ru.getResourcesUsed(player)) {
+            // int tup = (y > 0 ? pgs.getTerrain(x, y - 1) :
+            // PhysicalGameState.TERRAIN_WALL);
+            // int tright = (x < pgs.getWidth() - 1 ? pgs.getTerrain(x + 1, y) :
+            // PhysicalGameState.TERRAIN_WALL);
+            // int tdown = (y < pgs.getHeight() - 1 ? pgs.getTerrain(x, y + 1) :
+            // PhysicalGameState.TERRAIN_WALL);
+            // int tleft = (x > 0 ? pgs.getTerrain(x - 1, y) :
+            // PhysicalGameState.TERRAIN_WALL);
+
+            // if (tup == PhysicalGameState.TERRAIN_NONE && pgs.getUnitAt(x, y - 1) == null)
+            // {
+            // var ua = new UnitAction(UnitAction.TYPE_PRODUCE, UnitAction.DIRECTION_UP,
+            // ut);
+            // if (ua.resourceUsage(unit, pgs).consistentWith(base_ru, gs))
+            // l.add(ua);
+            // }
+            // if (tright == PhysicalGameState.TERRAIN_NONE && pgs.getUnitAt(x + 1, y) ==
+            // null) {
+            // var ua = new UnitAction(UnitAction.TYPE_PRODUCE, UnitAction.DIRECTION_RIGHT,
+            // ut);
+            // if (ua.resourceUsage(unit, pgs).consistentWith(base_ru, gs))
+            // l.add(ua);
+            // }
+            // if (tdown == PhysicalGameState.TERRAIN_NONE && pgs.getUnitAt(x, y + 1) ==
+            // null) {
+            // var ua = new UnitAction(UnitAction.TYPE_PRODUCE, UnitAction.DIRECTION_DOWN,
+            // ut);
+            // if (ua.resourceUsage(unit, pgs).consistentWith(base_ru, gs))
+            // l.add(ua);
+            // }
+            // if (tleft == PhysicalGameState.TERRAIN_NONE && pgs.getUnitAt(x - 1, y) ==
+            // null) {
+            // var ua = new UnitAction(UnitAction.TYPE_PRODUCE, UnitAction.DIRECTION_LEFT,
+            // ut);
+            // if (ua.resourceUsage(unit, pgs).consistentWith(base_ru, gs))
+            // l.add(ua);
+            // }
+            // }
         }
 
         // if the unit can move, adds a move action for each free tile around it
         if (type.canMove) {
-            int tup = (y > 0 ? pgs.getTerrain(x, y - 1) : PhysicalGameState.TERRAIN_WALL);
-            int tright = (x < pgs.getWidth() - 1 ? pgs.getTerrain(x + 1, y) : PhysicalGameState.TERRAIN_WALL);
-            int tdown = (y < pgs.getHeight() - 1 ? pgs.getTerrain(x, y + 1) : PhysicalGameState.TERRAIN_WALL);
-            int tleft = (x > 0 ? pgs.getTerrain(x - 1, y) : PhysicalGameState.TERRAIN_WALL);
+            // int tup = (y > 0 ? pgs.getTerrain(x, y - 1) :
+            // PhysicalGameState.TERRAIN_WALL);
+            // int tright = (x < pgs.getWidth() - 1 ? pgs.getTerrain(x + 1, y) :
+            // PhysicalGameState.TERRAIN_WALL);
+            // int tdown = (y < pgs.getHeight() - 1 ? pgs.getTerrain(x, y + 1) :
+            // PhysicalGameState.TERRAIN_WALL);
+            // int tleft = (x > 0 ? pgs.getTerrain(x - 1, y) :
+            // PhysicalGameState.TERRAIN_WALL);
 
-            if (tup == PhysicalGameState.TERRAIN_NONE && uup == null) {
-                var ua = new UnitAction(UnitAction.TYPE_MOVE, UnitAction.DIRECTION_UP);
-                if (ua.resourceUsage(unit, pgs).consistentWith(base_ru, gs))
-                    l.add(ua);
-            }
-            if (tright == PhysicalGameState.TERRAIN_NONE && uright == null) {
-                var ua = new UnitAction(UnitAction.TYPE_MOVE, UnitAction.DIRECTION_RIGHT);
-                if (ua.resourceUsage(unit, pgs).consistentWith(base_ru, gs))
-                    l.add(ua);
-            }
-            if (tdown == PhysicalGameState.TERRAIN_NONE && udown == null) {
-                var ua = new UnitAction(UnitAction.TYPE_MOVE, UnitAction.DIRECTION_DOWN);
-                if (ua.resourceUsage(unit, pgs).consistentWith(base_ru, gs))
-                    l.add(ua);
-            }
-            if (tleft == PhysicalGameState.TERRAIN_NONE && uleft == null) {
-                var ua = new UnitAction(UnitAction.TYPE_MOVE, UnitAction.DIRECTION_LEFT);
-                if (ua.resourceUsage(unit, pgs).consistentWith(base_ru, gs))
-                    l.add(ua);
-            }
+            // if (tup == PhysicalGameState.TERRAIN_NONE && uup == null) {
+            // var ua = new UnitAction(UnitAction.TYPE_MOVE, UnitAction.DIRECTION_UP);
+            // if (ua.resourceUsage(unit, pgs).consistentWith(base_ru, gs))
+            // l.add(ua);
+            // }
+            // if (tright == PhysicalGameState.TERRAIN_NONE && uright == null) {
+            // var ua = new UnitAction(UnitAction.TYPE_MOVE, UnitAction.DIRECTION_RIGHT);
+            // if (ua.resourceUsage(unit, pgs).consistentWith(base_ru, gs))
+            // l.add(ua);
+            // }
+            // if (tdown == PhysicalGameState.TERRAIN_NONE && udown == null) {
+            // var ua = new UnitAction(UnitAction.TYPE_MOVE, UnitAction.DIRECTION_DOWN);
+            // if (ua.resourceUsage(unit, pgs).consistentWith(base_ru, gs))
+            // l.add(ua);
+            // }
+            // if (tleft == PhysicalGameState.TERRAIN_NONE && uleft == null) {
+            // var ua = new UnitAction(UnitAction.TYPE_MOVE, UnitAction.DIRECTION_LEFT);
+            // if (ua.resourceUsage(unit, pgs).consistentWith(base_ru, gs))
+            // l.add(ua);
+            // }
 
-            if (unit != null) {
-                Unit closestR = Closest(toPos(unit), _resources);
+            // if (unit != null) {
+            // Unit closestR = Closest(toPos(unit), _resources);
 
-                if (closestR != null) {
-                    UnitAction moveT = moveTowards(unit, toPos(closestR));
+            // if (closestR != null) {
+            // UnitAction moveT = moveTowards(unit, toPos(closestR));
 
-                    if (moveT != null && moveT.resourceUsage(unit, pgs).consistentWith(base_ru, gs)) {
-                        l.add(moveT);
-                    }
-                }
-            }
+            // if (moveT != null && moveT.resourceUsage(unit, pgs).consistentWith(base_ru,
+            // gs)) {
+            // l.add(moveT);
+            // }
+            // }
+            // }
+
         }
 
         // units can always stay idle:
@@ -863,11 +907,15 @@ public class GameStateWrapper {
         return true;
     }
 
-    Unit Closest(Pos src, List<Unit> units) {
+    Unit closest(Pos src, List<Unit> units) {
         if (units.isEmpty())
             return null;
         Unit closest = units.stream().min(Comparator.comparing(u -> distance(src, toPos(u)))).get();
         return closest;
+    }
+
+    Unit closest(Unit src, List<Unit> units) {
+        return closest(toPos(src), units);
     }
 
     boolean isBlocked(Unit u, Pos p) {
@@ -1128,6 +1176,52 @@ public class GameStateWrapper {
         return false; // todo here
     }
 
+    int bestBuildWorkerDir(Unit base) {
+        int bestScore = -Integer.MAX_VALUE;
+        int bestDir = 0;
+        for (int dir : _dirs) {
+            int score = 0;
+            Pos n = futurePos(base.getX(), base.getY(), dir);
+            if (outOfBound(n) || _pgs.getTerrain(n.getX(), n.getY()) == TERRAIN_WALL)
+                continue;
+            Unit u = _pgs.getUnitAt(n.getX(), n.getY());
+            if (u != null)
+                continue;
+            if (!posFree(n.getX(), n.getY(), dir))
+                continue;
+            Unit e = closest(base, _enemies);
+            Unit r = closest(base, _resources);
+            if (e == null) // already won?
+                continue;
+            // towards enemy, or
+            if (r == null || _workers.size() >= 2 * _bases.size()) {// todo here *2?
+                score = -distance(n, toPos(e)); // close to enemy is better
+            } else
+                score = -distance(n, toPos(r)); // close to resource
+            if (score > bestScore) {
+                bestScore = score;
+                bestDir = dir;
+            }
+        }
+        return bestDir;
+    }
+
+    int workerPerBase(Unit base) {
+        if (_pgs.getWidth() < 9)// && _barracks.isEmpty())
+            return 15;
+
+        if (_pgs.getWidth() > 16)
+            return 2;
+
+        if (isSeperated(base, _enemies) || gs.getTime() > 1000)
+            return 2;
+
+        int enemyFromBelow = (_enemyWorkers.size()) / Math.max(_enemyBases.size(), 1);
+        return Math.max(enemyFromBelow, 2);
+        // return .size()
+        // return 4;
+    }
+
     UnitAction doNothing(Unit u) {
         return new UnitAction(UnitAction.TYPE_NONE, 1);
     }
@@ -1278,6 +1372,51 @@ public class GameStateWrapper {
         return null;
     }
 
+    UnitAction workerAction(Unit worker) {
+        if (busy(worker))
+            return null;
+        if (worker.getResources() <= 0)
+            return null;
+        Unit base = closest(worker, _bases);
+        if (base == null)
+            return null;
+        else if (distance(worker, base) <= 1)
+            return returnHarvest(worker, base); // todo - check if safe?
+        else
+            return moveTowards(worker, toPos(base));
+    }
+
+    UnitAction produceWherever(Unit u, UnitType bType) {
+        for (int dir : _dirs) {
+            UnitAction ua = produce(u, dir, bType);
+            if (ua != null)
+                return ua;
+        }
+
+        return null;
+    }
+
+    UnitAction basesAction(Unit base) {
+        int producingWorker = 0; // todo change logic
+        long producingCount = _bases.stream().filter(b -> gs.getActionAssignment(b) != null).count();
+        if (busy(base))
+            return null;
+        int workerPerBase = workerPerBase(base);
+        boolean onlyOption = _resources.isEmpty() && ((_p.getResources() - _resourcesUsed) == 1); // todo some workers
+                                                                                                  // carry...
+        if (onlyOption) {
+            return produceWherever(base, _utt.getUnitType("Worker"));
+        }
+        // Dont produce if not in abundance
+        if (_pgs.getWidth() >= 9 && _workers.size() + producingWorker + producingCount >= workerPerBase * _bases.size())
+            return null;
+        int dirBuild = bestBuildWorkerDir(base);
+        UnitAction succ = produce(base, dirBuild, _utt.getUnitType("Worker"));
+        if (succ == null)
+            return produceWherever(base, _utt.getUnitType("Worker"));
+        return succ;
+    }
+
     UnitAction goCombat(Unit u) {
         if (busy(u) || !u.getType().canAttack) {
             return null;
@@ -1311,5 +1450,20 @@ public class GameStateWrapper {
         if (overPowering()) // give worker to open pathway if blocked
             return tryMoveAway(u, u);
         return moveInDirection(u, enemy);
+    }
+
+    UnitAction goHarvesting(Unit worker) {
+        Unit closestRes = closest(worker, _resources);
+        if (closestRes == null)
+            return null;
+        int dist = distance(toPos(worker), toPos(closestRes));
+        if (dist == 1) {
+            return harvest(worker, closestRes); // todo - safe to harvest
+        }
+
+        UnitAction ua = moveTowards(worker, toPos(closestRes));
+        if (ua != null)
+            tryMoveAway(worker, worker); // random move to shake things up
+        return ua;
     }
 }
