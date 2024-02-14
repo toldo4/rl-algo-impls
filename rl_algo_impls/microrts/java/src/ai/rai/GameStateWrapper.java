@@ -8,6 +8,8 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.stream.Collectors;
 
+import javax.lang.model.type.UnionType;
+
 import rts.GameState;
 import rts.PhysicalGameState;
 import rts.Player;
@@ -83,46 +85,50 @@ public class GameStateWrapper {
         base_ru = new ResourceUsage();
         _pgs = gs.getPhysicalGameState();
         _utt = gs.getUnitTypeTable();
-        _enemyP = gs.getPlayer(_p.getID() == 0 ? 1 : 0);
 
+        astarPath = new AStarPathFinding();
+
+        if (_p != null) {
+            _enemyP = gs.getPlayer(_p.getID() == 0 ? 1 : 0);
+        }
         for (Unit u : _pgs.getUnits()) {
             UnitActionAssignment uaa = gs.getActionAssignment(u);
+
             if (uaa != null) {
                 ResourceUsage ru = uaa.action.resourceUsage(u, _pgs);
                 base_ru.merge(ru);
             }
-
             if (u.getType().isResource)
                 _resources.add(u);
-            else if (u.getType() == _utt.getUnitType("Base") && isEnemyUnit(u))
+            else if (u.getType() == _utt.getUnitType("Base") && _p != null && isEnemyUnit(u))
                 _enemyBases.add(u);
             else if (u.getType() == _utt.getUnitType("Base"))
                 _bases.add(u);
-            else if (u.getType() == _utt.getUnitType("Barracks") && isEnemyUnit(u))
+            else if (u.getType() == _utt.getUnitType("Barracks") && _p != null && isEnemyUnit(u))
                 _enemyBarracks.add(u);
             else if (u.getType() == _utt.getUnitType("Barracks"))
                 _barracks.add(u);
-            else if (u.getType() == _utt.getUnitType("Worker") && isEnemyUnit(u))
+            else if (u.getType() == _utt.getUnitType("Worker") && _p != null && isEnemyUnit(u))
                 _enemyWorkers.add(u);
             else if (u.getType() == _utt.getUnitType("Worker"))
                 _workers.add(u);
-            else if (u.getType() == _utt.getUnitType("Ranged") && isEnemyUnit(u))
+            else if (u.getType() == _utt.getUnitType("Ranged") && _p != null && isEnemyUnit(u))
                 _enemyArchers.add(u);
             else if (u.getType() == _utt.getUnitType("Ranged"))
                 _archers.add(u);
-            else if (u.getType() == _utt.getUnitType("Heavy") && isEnemyUnit(u))
+            else if (u.getType() == _utt.getUnitType("Heavy") && _p != null && isEnemyUnit(u))
                 _enemyHeavies.add(u);
             else if (u.getType() == _utt.getUnitType("Heavy"))
                 _heavies.add(u);
-            else if (u.getType() == _utt.getUnitType("Light") && isEnemyUnit(u))
+            else if (u.getType() == _utt.getUnitType("Light") && _p != null && isEnemyUnit(u))
                 _enemyLights.add(u);
             else if (u.getType() == _utt.getUnitType("Light"))
                 _lights.add(u);
 
-            if (isEnemyUnit(u)) {
+            if (_p != null && isEnemyUnit(u)) {
                 _enemies.add(u);
             }
-            if (isEnemyUnit(u) && u.getType().canAttack)
+            if (_p != null && isEnemyUnit(u) && u.getType().canAttack)
                 _enemiesCombat.add(u);
             else if (u.getType().canAttack)
                 _allyCombat.add(u);
@@ -401,7 +407,7 @@ public class GameStateWrapper {
         }
 
         Arrays.stream(masks[player]).forEach(mY -> Arrays.stream(mY).forEach(
-                mX -> Arrays.fill(mX, 0)));
+                mX -> Arrays.fill(mX, 1)));
 
         for (Unit u : pgs.getUnits()) {
             final UnitActionAssignment uaa = gs.getActionAssignment(u);
@@ -459,7 +465,6 @@ public class GameStateWrapper {
         final List<UnitAction> uas = getUnitActions(u, utt);
         int centerCoordinate = maxAttackRange / 2;
         int numUnitTypes = utt.getUnitTypes().size();
-
         for (UnitAction ua : uas) {
 
             mask[idxOffset + ua.getType()] = 1;
@@ -503,7 +508,6 @@ public class GameStateWrapper {
     }
 
     public List<UnitAction> getUnitActions(Unit unit, UnitTypeTable utt) {
-
         List<UnitAction> l = new ArrayList<>();
 
         PhysicalGameState pgs = gs.getPhysicalGameState();
@@ -637,12 +641,20 @@ public class GameStateWrapper {
         // a produce action is added for each free tile around the producer
         for (UnitType ut : type.produces) {
             UnitAction ua = null;
-            if (ut == _utt.getUnitType("Worker")) {
-                workerAction(unit);
-            } else if (ut == _utt.getUnitType("Barracks")) {
-                barracksAction(unit);
-            } else if (ut == _utt.getUnitType("Barracks")) {
-                basesAction(unit);
+
+            UnitType unitType = unit.getType();
+
+            if (unitType != null && unitType.name == "Worker") {
+                ua = workerAction(unit);
+            } else if (unitType != null && unitType.name == "Barracks") {
+                ua = barracksAction(unit);
+
+            } else if (unitType != null && unitType.name == "Base") {
+                ua = basesAction(unit);
+            }
+
+            if (ua != null) {
+                l.add(ua);
             }
             // if (p.getResources() >= ut.cost + base_ru.getResourcesUsed(player)) {
             // int tup = (y > 0 ? pgs.getTerrain(x, y - 1) :
@@ -820,6 +832,8 @@ public class GameStateWrapper {
     }
 
     int distance(Unit a, Unit b) {
+        if (a == null | b == null)
+            return Integer.MAX_VALUE;
         return distance(toPos(a), toPos(b));
     }
 
@@ -908,7 +922,7 @@ public class GameStateWrapper {
     }
 
     Unit closest(Pos src, List<Unit> units) {
-        if (units.isEmpty())
+        if (units == null || units.isEmpty())
             return null;
         Unit closest = units.stream().min(Comparator.comparing(u -> distance(src, toPos(u)))).get();
         return closest;
@@ -1052,6 +1066,92 @@ public class GameStateWrapper {
 
     boolean dying(Unit u) {
         return u.getHitPoints() <= _newDmgs.getOrDefault(u, 0);
+    }
+
+    boolean validForFutureBuild(Pos p) {
+        if (outOfBound(p) || _pgs.getTerrain(p.getX(), p.getY()) == TERRAIN_WALL)
+            return false;
+        Unit exUnit = _pgs.getUnitAt(p.getX(), p.getY());
+        if (exUnit != null && (exUnit.getType() == _utt.getUnitType("Base")
+                || exUnit.getType() == _utt.getUnitType("Barracks"))) // todo - may be if mobile unit too?
+            return false;
+        return true;
+    }
+
+    double buildBlockPenalty(Pos p, boolean diagonalsPenalty) {
+        double blockingScore = 0;
+        List<Pos> nn = allPosRange(p, 2);
+        for (Pos n : nn) {
+            int dist = distance(n, p);
+            if ((!diagonalsPenalty && dist == 2) || dist == 0)
+                continue;
+            if (outOfBound(n) || _pgs.getTerrain(n.getX(), n.getY()) == TERRAIN_WALL)
+                blockingScore += dist > 1 ? 0 : 0.2;
+            Unit u = _pgs.getUnitAt(n.getX(), n.getY());
+            if (u == null)
+                continue;
+            if (u.getType().isResource || u.getType() == _utt.getUnitType("Base"))
+                blockingScore += dist > 1 ? 1 : 4;
+        }
+        return blockingScore;
+    }
+
+    boolean between(Pos a, Pos b, Pos c) {
+        if (a.getX() < b.getX() && c.getX() < b.getX())
+            return false;
+        if (a.getX() > b.getX() && c.getX() > b.getX())
+            return false;
+        if (a.getY() < b.getY() && c.getY() < b.getY())
+            return false;
+        if (a.getY() > b.getY() && c.getY() > b.getY())
+            return false;
+        return true;
+    }
+
+    int buildBarrackWorkerScore(Pos dst, Unit w) {
+        if (busy(w))
+            return Integer.MIN_VALUE;
+        int barrackTLen = _utt.getUnitType("Barracks").produceTime / _utt.getUnitType("Worker").moveTime;
+        int heavyTLen = _utt.getUnitType("Heavy").produceTime / _utt.getUnitType("Worker").moveTime;
+        int dangerTLen = barrackTLen + heavyTLen;
+
+        Unit e = closest(dst, _enemies);
+        int dangerPenalty = 0;
+
+        if (e != null) {
+            int edist = Math.max(distance(dst, toPos(e)), 1);
+            if (edist < dangerTLen) {
+                dangerPenalty = (2 * dangerTLen) / edist;
+                if (between(toPos(w), dst, toPos(e)))
+                    dangerPenalty -= 3; // building site is blocking the enemy
+            }
+        }
+        int wDist = distance(toPos(w), dst) / 2;
+        return -dangerPenalty - wDist;
+    }
+
+    int buildBarrackScore(Pos dst) {
+        if (!validForFutureBuild(dst))
+            return Integer.MIN_VALUE;
+        if (_workers.isEmpty())
+            return Integer.MIN_VALUE;
+
+        Unit b = closest(dst, _bases);
+        if (isSeperated(b, _enemies))
+            return -(int) buildBlockPenalty(dst, true) * 10;
+
+        List<Pos> allBrxs = toPos(_barracks);
+        allBrxs.addAll(_futureBarracks);
+        int deseretScore = 0;
+        if (!allBrxs.isEmpty())
+            deseretScore = (int) (minDistance(toPos(b), allBrxs) / 2); // like base to be deserted
+
+        double blockingPenalty = buildBlockPenalty(dst, false);
+
+        Unit worker = _workers.stream().max(Comparator.comparingInt((u) -> buildBarrackWorkerScore(dst, u))).get();
+        int workerScore = buildBarrackWorkerScore(dst, worker); // include danger
+
+        return 10 * (deseretScore - (int) blockingPenalty + workerScore);
     }
 
     int combatScore(Unit u, Unit e) {
@@ -1253,6 +1353,9 @@ public class GameStateWrapper {
                     bestDir = dir;
                 }
             }
+            if (bestDir == -Integer.MAX_VALUE)
+                break;
+
             UnitAction ua = produce(barrack, bestDir, unitType);
             if (ua != null)
                 return ua;
@@ -1375,15 +1478,33 @@ public class GameStateWrapper {
     UnitAction workerAction(Unit worker) {
         if (busy(worker))
             return null;
-        if (worker.getResources() <= 0)
+
+        UnitAction ua = buildBracks(worker);
+
+        if (ua != null)
+            return ua;
+
+        if (worker.getResources() <= 0) {
+
+            Unit resource = closest(worker, _resources);
+
+            if (resource == null)
+                return null;
+
+            return moveTowards(worker, toPos(resource));
+        }
+        if (_bases == null)
             return null;
+
         Unit base = closest(worker, _bases);
         if (base == null)
             return null;
-        else if (distance(worker, base) <= 1)
+        else if (distance(worker, base) <= 1) {
             return returnHarvest(worker, base); // todo - check if safe?
-        else
+        } else {
             return moveTowards(worker, toPos(base));
+
+        }
     }
 
     UnitAction produceWherever(Unit u, UnitType bType) {
@@ -1394,6 +1515,30 @@ public class GameStateWrapper {
         }
 
         return null;
+    }
+
+    boolean needNewBarracks() {
+        if (_barracks.size() + _futureBarracks.size() >= _bases.size()) // todo
+            return false;
+
+        int maxDist = _pgs.getWidth() / 4;
+        for (Unit b : _bases) {
+            int minDist = minDistance(toPos(b), _futureBarracks);
+            if (minDist <= maxDist)
+                continue;
+            Unit brx = closest(b, _barracks);
+            if (brx != null && distance(toPos(brx), toPos(b)) < maxDist)
+                continue;
+            return true;
+        }
+        return false;
+    }
+
+    UnitAction goBuildBarrack(Unit worker, Pos dst) {
+        if (distance(toPos(worker), dst) != 1)
+            return moveTowards(worker, dst);
+        int dir = toDir(toPos(worker), dst);
+        return produce(worker, dir, _utt.getUnitType("Barracks"));
     }
 
     UnitAction basesAction(Unit base) {
@@ -1432,6 +1577,8 @@ public class GameStateWrapper {
         int counter = 0;
         int cutOff = _enemiesCombat.size() > 24 ? 12 : 24; // for performance
         // long timeRemain = timeRemaining(true);
+        if (!candidates.isEmpty())
+            return null;
 
         while (counter < candidates.size() && counter < cutOff) {
             Unit enemy = candidates.get(counter);
@@ -1465,5 +1612,32 @@ public class GameStateWrapper {
         if (ua != null)
             tryMoveAway(worker, worker); // random move to shake things up
         return ua;
+    }
+
+    UnitAction buildBracks(Unit worker) {
+        // if (_p.getResources() - _resourcesUsed - 1 <
+        // _utt.getUnitType("Barracks").cost)
+        // return null;
+
+        if (!needNewBarracks())
+            return null;
+
+        if (_bases.isEmpty()) // todo
+            return null;
+
+        List<Pos> pCandidates = new ArrayList<>();
+        for (Unit base : _bases) {
+            List<Pos> poses = allPosRange(toPos(base), 2);
+            pCandidates.addAll(poses);
+        }
+
+        int counter = 0;
+
+        Pos c = pCandidates.stream().max(Comparator.comparingInt((e) -> buildBarrackScore(e))).get();
+
+        if (c == null || buildBarrackScore(c) == Integer.MIN_VALUE
+                || buildBarrackWorkerScore(c, worker) == Integer.MIN_VALUE)
+            return null;
+        return goBuildBarrack(worker, c);
     }
 }
