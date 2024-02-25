@@ -584,8 +584,11 @@ public class GameStateWrapper {
             // }
             // }
             // }
+            UnitAction ua = attackNearby(unit);
+            if (ua != null)
+                l.add(ua);
 
-            UnitAction ua = goCombat(unit);
+            ua = goCombat(unit);
             if (ua != null)
                 l.add(ua);
         }
@@ -1276,6 +1279,23 @@ public class GameStateWrapper {
         return false; // todo here
     }
 
+    boolean soonInAttackRange(Unit attacker, Unit runner) {
+        return squareDist(toPos(attacker), futurePoss(runner)) <= attacker.getAttackRange();
+    }
+    boolean inAttackRange(Unit attacker, Unit runner) {
+        return squareDist(toPos(attacker), toPos(runner)) <= attacker.getAttackRange();
+    }
+
+    boolean willEscapeAttack(Unit attacker, Unit runner) {
+        UnitActionAssignment aa = gs.getActionAssignment(runner);
+        if (aa == null)
+            return false;
+        if (aa.action.getType() != UnitAction.TYPE_MOVE)
+            return false;
+        int eta = aa.action.ETA(runner) - (gs.getTime() - aa.time);
+        return eta <= attacker.getAttackTime();
+    }
+
     int bestBuildWorkerDir(Unit base) {
         int bestScore = -Integer.MAX_VALUE;
         int bestDir = 0;
@@ -1320,6 +1340,33 @@ public class GameStateWrapper {
         return Math.max(enemyFromBelow, 2);
         // return .size()
         // return 4;
+    }
+
+        
+    int combatNearbyScore(Unit attacker, Unit defender) {
+        if(dying(defender))
+            return Integer.MIN_VALUE;
+        
+        if (squareDist(toPos(attacker), toPos(defender))
+                > (_utt.getUnitType("Ranged").attackRange + 3))
+            return Integer.MIN_VALUE; //tood - remove
+        
+        //int rangerBasePenalty = 0;
+        //if (attacker.getType() == _utt.getUnitType("Ranger")
+         //       && attacker.getType() == _utt.getUnitType("Base")) 
+         //   rangerBasePenalty = 1;
+        
+        boolean inRange = inAttackRange(attacker, defender);
+        int attackSucc = inRange && !willEscapeAttack(attacker, defender) ? 1 : 0;
+        int threatened = inAttackRange(defender, attacker) ? 1 : 0;
+        int willKill = attacker.getMaxDamage() > defender.getHitPoints() ? 1 : 0;
+        
+        int enemyPower = defender.getMaxDamage(); //defender.getMaxHitPoints();
+        
+        int archerToWorker = (attacker.getType() == _utt.getUnitType("Ranged") && //todo big change this was Ranger instead of Ranged
+                defender.getType() == _utt.getUnitType("Worker")) ? 1 : 0;  //to do this was 1: 0 
+        
+        return 1000*attackSucc + 100 * willKill + (archerToWorker + enemyPower) * 10 + threatened;
     }
 
     UnitAction doNothing(Unit u) {
@@ -1562,6 +1609,39 @@ public class GameStateWrapper {
         return succ;
     }
 
+    UnitAction attackNearby(Unit u, Unit e) {
+        boolean inRange = inAttackRange(u, e);
+        boolean attackSucc = inRange && !willEscapeAttack(u, e);
+        if (attackSucc) {
+            return attackNow(u, e);
+        }
+        else if(soonInAttackRange(u, e)) { //wait for attack
+            return doNothing(u);
+        }
+        boolean threatened = inAttackRange(e, u);
+        if(threatened) {
+            return moveTowards(u, toPos(e)); //running to rangers... may be shouldnt?
+        }
+        return null;
+    }
+
+    UnitAction attackNearby(Unit u) {
+        List<Unit> candidates = new ArrayList<>(_enemies);
+        
+        int cutOff = _enemiesCombat.size() > 24 ? 12 : 24; //for performance issue
+        int counter = 0;
+        while (!candidates.isEmpty() && counter < cutOff) {
+            Unit c = candidates.stream().max(Comparator.comparingInt((e) -> combatNearbyScore(u, e))).get();
+            
+            UnitAction ua = attackNearby(u, c);  
+            if (ua != null)
+                return ua;
+            candidates.remove(c);
+            counter++;
+        }
+        return null;
+    }
+
     UnitAction goCombat(Unit u) {
         if (busy(u) || !u.getType().canAttack) {
             return null;
@@ -1577,8 +1657,6 @@ public class GameStateWrapper {
         int counter = 0;
         int cutOff = _enemiesCombat.size() > 24 ? 12 : 24; // for performance
         // long timeRemain = timeRemaining(true);
-        if (!candidates.isEmpty())
-            return null;
 
         while (counter < candidates.size() && counter < cutOff) {
             Unit enemy = candidates.get(counter);
