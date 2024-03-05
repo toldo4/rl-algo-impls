@@ -83,6 +83,29 @@ public class GameStateWrapper {
         debugLevel = a_debugLevel;
 
         base_ru = new ResourceUsage();
+    }
+
+    public void InitGameState(){
+         _resources = new ArrayList<>();
+
+         _bases = new ArrayList<>();
+         _barracks = new ArrayList<>();
+         _workers = new ArrayList<>();
+         _heavies = new ArrayList<>();
+         _archers = new ArrayList<>();
+         _lights = new ArrayList<>();
+         _allyUnits = new ArrayList<>();
+         _allyCombat = new ArrayList<>();
+    
+         _enemyBases = new ArrayList<>();
+         _enemyBarracks = new ArrayList<>();
+         _enemyWorkers = new ArrayList<>();
+         _enemyHeavies = new ArrayList<>();
+         _enemyArchers = new ArrayList<>();
+         _enemyLights = new ArrayList<>();
+         _enemies = new ArrayList<>();
+         _enemiesCombat = new ArrayList<>();
+
         _pgs = gs.getPhysicalGameState();
         _utt = gs.getUnitTypeTable();
 
@@ -133,6 +156,8 @@ public class GameStateWrapper {
             else if (u.getType().canAttack)
                 _allyCombat.add(u);
         }
+
+        // System.out.println("_enemies: " + _enemies);
 
         _dirs = new ArrayList<>();
         _dirs.add(UnitAction.DIRECTION_UP);
@@ -397,6 +422,8 @@ public class GameStateWrapper {
     }
 
     public int[][][] getMasks(int player) {
+        System.out.println("getMasks");
+
         UnitTypeTable utt = gs.getUnitTypeTable();
         PhysicalGameState pgs = gs.getPhysicalGameState();
 
@@ -407,7 +434,7 @@ public class GameStateWrapper {
         }
 
         Arrays.stream(masks[player]).forEach(mY -> Arrays.stream(mY).forEach(
-                mX -> Arrays.fill(mX, 1)));
+                mX -> Arrays.fill(mX, 0)));
 
         for (Unit u : pgs.getUnits()) {
             final UnitActionAssignment uaa = gs.getActionAssignment(u);
@@ -425,6 +452,8 @@ public class GameStateWrapper {
         PhysicalGameState pgs = gs.getPhysicalGameState();
         List<Unit> units = pgs.getUnits().stream()
                 .filter(u -> u.getPlayer() == player && gs.getActionAssignment(u) == null).collect(Collectors.toList());
+
+        _p = gs.getPlayer(player);
 
         int maxAttackDiameter = utt.getMaxAttackRange() * 2 + 1;
         final int maskSize = 6 + 4 + 4 + 4 + 4 + utt.getUnitTypes().size()
@@ -460,7 +489,7 @@ public class GameStateWrapper {
 
     public void getValidActionArray(Unit u, UnitTypeTable utt, int[] mask, int maxAttackRange,
             int idxOffset) {
-        _p = gs.getPlayer(u.getPlayer());
+        // _p = gs.getPlayer(u.getPlayer());
 
         final List<UnitAction> uas = getUnitActions(u, utt);
         int centerCoordinate = maxAttackRange / 2;
@@ -508,38 +537,38 @@ public class GameStateWrapper {
     }
 
     public List<UnitAction> getUnitActions(Unit unit, UnitTypeTable utt) {
+        InitGameState();
+
         List<UnitAction> l = new ArrayList<>();
 
         PhysicalGameState pgs = gs.getPhysicalGameState();
-        int player = unit.getPlayer();
-        Player p = pgs.getPlayer(player);
 
         int x = unit.getX();
         int y = unit.getY();
         // retrieves units around me
         Unit uup = null, uright = null, udown = null, uleft = null;
         UnitActionAssignment uaaUp = null, uaaRight = null, uaaDown = null, uaaLeft = null;
-        for (Unit u : pgs.getUnits()) {
-            if (u.getX() == x) {
-                if (u.getY() == y - 1) {
-                    uup = u;
-                    uaaUp = gs.getActionAssignment(uup);
-                } else if (u.getY() == y + 1) {
-                    udown = u;
-                    uaaDown = gs.getActionAssignment(udown);
-                }
-            } else {
-                if (u.getY() == y) {
-                    if (u.getX() == x - 1) {
-                        uleft = u;
-                        uaaLeft = gs.getActionAssignment(uleft);
-                    } else if (u.getX() == x + 1) {
-                        uright = u;
-                        uaaRight = gs.getActionAssignment(uright);
-                    }
-                }
-            }
-        }
+        // for (Unit u : pgs.getUnits()) {
+        // if (u.getX() == x) {
+        // if (u.getY() == y - 1) {
+        // uup = u;
+        // uaaUp = gs.getActionAssignment(uup);
+        // } else if (u.getY() == y + 1) {
+        // udown = u;
+        // uaaDown = gs.getActionAssignment(udown);
+        // }
+        // } else {
+        // if (u.getY() == y) {
+        // if (u.getX() == x - 1) {
+        // uleft = u;
+        // uaaLeft = gs.getActionAssignment(uleft);
+        // } else if (u.getX() == x + 1) {
+        // uright = u;
+        // uaaRight = gs.getActionAssignment(uright);
+        // }
+        // }
+        // }
+        // }
 
         UnitType type = unit.getType();
         // if this unit can attack, adds an attack action for each unit around it
@@ -585,11 +614,11 @@ public class GameStateWrapper {
             // }
             // }
             UnitAction ua = attackNearby(unit);
-            if (ua != null)
+            if (ua != null && gs.isUnitActionAllowed(unit, ua) && ua.resourceUsage(unit, pgs).consistentWith(base_ru, gs))
                 l.add(ua);
 
             ua = goCombat(unit);
-            if (ua != null)
+            if (ua != null && gs.isUnitActionAllowed(unit, ua) && ua.resourceUsage(unit, pgs).consistentWith(base_ru, gs))
                 l.add(ua);
         }
 
@@ -634,7 +663,7 @@ public class GameStateWrapper {
             // }
             // }
             UnitAction ua = goHarvesting(unit);
-            if (ua != null) {
+            if (ua != null && gs.isUnitActionAllowed(unit, ua) && ua.resourceUsage(unit, pgs).consistentWith(base_ru, gs)) {
                 l.add(ua);
             }
         }
@@ -656,7 +685,7 @@ public class GameStateWrapper {
                 ua = basesAction(unit);
             }
 
-            if (ua != null) {
+            if (ua != null && gs.isUnitActionAllowed(unit, ua) && ua.resourceUsage(unit, pgs).consistentWith(base_ru, gs)) {
                 l.add(ua);
             }
             // if (p.getResources() >= ut.cost + base_ru.getResourcesUsed(player)) {
@@ -749,6 +778,7 @@ public class GameStateWrapper {
 
         // units can always stay idle:
         l.add(new UnitAction(UnitAction.TYPE_NONE, 1));
+        // System.out.println("player --> " + unit.getPlayer() + " actions --> " + l.size());
 
         return l;
     }
@@ -1282,6 +1312,7 @@ public class GameStateWrapper {
     boolean soonInAttackRange(Unit attacker, Unit runner) {
         return squareDist(toPos(attacker), futurePoss(runner)) <= attacker.getAttackRange();
     }
+
     boolean inAttackRange(Unit attacker, Unit runner) {
         return squareDist(toPos(attacker), toPos(runner)) <= attacker.getAttackRange();
     }
@@ -1342,31 +1373,33 @@ public class GameStateWrapper {
         // return 4;
     }
 
-        
     int combatNearbyScore(Unit attacker, Unit defender) {
-        if(dying(defender))
+        if (dying(defender))
             return Integer.MIN_VALUE;
-        
-        if (squareDist(toPos(attacker), toPos(defender))
-                > (_utt.getUnitType("Ranged").attackRange + 3))
-            return Integer.MIN_VALUE; //tood - remove
-        
-        //int rangerBasePenalty = 0;
-        //if (attacker.getType() == _utt.getUnitType("Ranger")
-         //       && attacker.getType() == _utt.getUnitType("Base")) 
-         //   rangerBasePenalty = 1;
-        
+
+        if (squareDist(toPos(attacker), toPos(defender)) > (_utt.getUnitType("Ranged").attackRange + 3))
+            return Integer.MIN_VALUE; // tood - remove
+
+        // int rangerBasePenalty = 0;
+        // if (attacker.getType() == _utt.getUnitType("Ranger")
+        // && attacker.getType() == _utt.getUnitType("Base"))
+        // rangerBasePenalty = 1;
+        if (attacker == defender) {
+            return Integer.MIN_VALUE;
+        }
+
         boolean inRange = inAttackRange(attacker, defender);
         int attackSucc = inRange && !willEscapeAttack(attacker, defender) ? 1 : 0;
         int threatened = inAttackRange(defender, attacker) ? 1 : 0;
         int willKill = attacker.getMaxDamage() > defender.getHitPoints() ? 1 : 0;
-        
-        int enemyPower = defender.getMaxDamage(); //defender.getMaxHitPoints();
-        
-        int archerToWorker = (attacker.getType() == _utt.getUnitType("Ranged") && //todo big change this was Ranger instead of Ranged
-                defender.getType() == _utt.getUnitType("Worker")) ? 1 : 0;  //to do this was 1: 0 
-        
-        return 1000*attackSucc + 100 * willKill + (archerToWorker + enemyPower) * 10 + threatened;
+
+        int enemyPower = defender.getMaxDamage(); // defender.getMaxHitPoints();
+
+        int archerToWorker = (attacker.getType() == _utt.getUnitType("Ranged") && // todo big change this was Ranger
+                                                                                  // instead of Ranged
+                defender.getType() == _utt.getUnitType("Worker")) ? 1 : 0; // to do this was 1: 0
+
+        return 1000 * attackSucc + 100 * willKill + (archerToWorker + enemyPower) * 10 + threatened;
     }
 
     UnitAction doNothing(Unit u) {
@@ -1480,6 +1513,8 @@ public class GameStateWrapper {
             _newDmgs.put(e, 0);
         int newDmg = _newDmgs.get(e) + a.getMaxHitPoints();
         _newDmgs.replace(e, newDmg);
+
+        System.out.println("player" + _p.getID());
         return ua;
     }
 
@@ -1613,32 +1648,41 @@ public class GameStateWrapper {
         boolean inRange = inAttackRange(u, e);
         boolean attackSucc = inRange && !willEscapeAttack(u, e);
         if (attackSucc) {
+            // System.out.println(u + " attackNearby --> attackSucc -->" + e);
             return attackNow(u, e);
-        }
-        else if(soonInAttackRange(u, e)) { //wait for attack
-            return doNothing(u);
+        } else if (soonInAttackRange(u, e)) { // wait for attack
+            return null;
         }
         boolean threatened = inAttackRange(e, u);
-        if(threatened) {
-            return moveTowards(u, toPos(e)); //running to rangers... may be shouldnt?
+        if (threatened) {
+            return moveTowards(u, toPos(e)); // running to rangers... may be shouldnt?
         }
         return null;
     }
 
     UnitAction attackNearby(Unit u) {
         List<Unit> candidates = new ArrayList<>(_enemies);
-        
-        int cutOff = _enemiesCombat.size() > 24 ? 12 : 24; //for performance issue
+
+        int cutOff = _enemiesCombat.size() > 24 ? 12 : 24; // for performance issue
         int counter = 0;
+
         while (!candidates.isEmpty() && counter < cutOff) {
+
             Unit c = candidates.stream().max(Comparator.comparingInt((e) -> combatNearbyScore(u, e))).get();
-            
-            UnitAction ua = attackNearby(u, c);  
+
+            UnitAction ua = attackNearby(u, c);
+            if (ua != null) {
+                // System.out.println(u + " attackNearby --> " + ua);
+                // System.out.println(u.getPlayer() + " attackNearby player --> " + c.getPlayer());
+            }
+
             if (ua != null)
                 return ua;
             candidates.remove(c);
             counter++;
         }
+        // System.out.println(u + " attackNearby -> null");
+
         return null;
     }
 
